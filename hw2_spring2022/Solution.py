@@ -22,14 +22,14 @@ def create_multi_valued_tables(mv_table_params: dict):
 
 def createTables():
     # creating tables and designing the database
-    file_table_params = {"table name": "file",
+    file_table_params = {"table name": "File",
                          "primary": {"name": "id", "type":"INTEGER", "check": "CHECK(id > 0)"},
                          "fields": [
                              {"name": "type", "type":"TEXT","check":"NOT NULL"},
                              {"name": "size", "type":"INTEGER", "check":"NOT NULL CHECK(size >= 0)"},
                             ]
                          }
-    disk_table_params = {"table name": "disk",
+    disk_table_params = {"table name": "Disk",
                          "primary": {"name": "id", "type":"INTEGER", "check": "CHECK(id > 0)"},
                          "fields": [
                              {"name": "company", "type":"TEXT","check":"NOT NULL"},
@@ -38,7 +38,7 @@ def createTables():
                              {"name": "cost_per_byte", "type": "INTEGER", "check":"NOT NULL CHECK (cost_per_byte > 0)"}
                             ]
                          }
-    ram_table_params = {"table name": "ram",
+    ram_table_params = {"table name": "Ram",
                         "primary": "id", "type": "INTEGER", "check": "CHECK(id > 0)",
                         "fields": [
                             {"name": "size", "type": "INTEGER", "check": "NOT NULL CHECK(space > 0)"},
@@ -71,25 +71,70 @@ def clearTables():
 def dropTables():
     pass
 
+def runQuery(query):
+    connector = None
+    result_query = None
+    try:
+        connector = Connector.DBConnector()
+        result_query = connector.execute(query)
+        connector.commit()
+    except Exception as e:
+        connector.rollback()
+        raise e
+    finally:
+        # will happen any way after try termination or exception handling
+        connector.close()
+    return result_query
+
+
+def runCheckQuery(queryString) -> Status:
+    try:
+        lines, _ = runQuery(queryString)
+    except DatabaseException.UNIQUE_VIOLATION:
+        return Status.ALREADY_EXISTS
+    except DatabaseException.FOREIGN_KEY_VIOLATION:
+        return Status.NOT_EXISTS
+    except (DatabaseException.NOT_NULL_VIOLATION, DatabaseException.CHECK_VIOLATION):
+        return Status.BAD_PARAMS
+    except Exception:
+        return Status.ERROR
+    return Status.OK
+
 
 def addFile(file: File) -> Status:
-    return Status.OK
+    query = sql.SQL(f'INSERT INTO File in VALUES ({file.getFileID()},{file.getType()},{file.getSize()})')
+    return runCheckQuery(query)
 
 
 def getFileByID(fileID: int) -> File:
-    return File()
+    query = sql.SQL(f'SELECT * FROM File WHERE File.id={fileID}')
+    try:
+        result = runQuery(query)
+        # TODO check what is inside result
+        return result
+    except:
+        return File.Badfile()
 
 
 def deleteFile(file: File) -> Status:
-    return Status.OK
+    query = sql.SQL('''''')
+    return runCheckQuery(query)
 
 
 def addDisk(disk: Disk) -> Status:
-    return Status.OK
+    query = sql.SQL(f'''INSERT INTO Disk in VALUES ({disk.getDiskID()},{disk.getCompany()},
+    {disk.getSpeed()},{disk.getFreeSpace()},{disk.getCost()})''')
+    return runCheckQuery(query)
 
 
 def getDiskByID(diskID: int) -> Disk:
-    return Disk()
+    query = sql.SQL(f'SELECT * FROM Disk WHERE Disk.id={diskID}')
+    try:
+        result = runQuery(query)
+        # TODO check what is inside result
+        return result
+    except:
+        return Disk.badDisk()
 
 
 def deleteDisk(diskID: int) -> Status:
@@ -97,11 +142,18 @@ def deleteDisk(diskID: int) -> Status:
 
 
 def addRAM(ram: RAM) -> Status:
-    return Status.OK
+    query = sql.SQL(f'INSERT INTO Ram in VALUES ({ram.getFileID()},{ram.getSize()},{ram.getCompany()})')
+    return runCheckQuery(query)
 
 
 def getRAMByID(ramID: int) -> RAM:
-    return RAM()
+    query = sql.SQL(f'SELECT * FROM Disk WHERE Disk.id={ramID}')
+    try:
+        result = runQuery(query)
+        # TODO check what is inside result
+        return result
+    except:
+        return RAM.badRAM()
 
 
 def deleteRAM(ramID: int) -> Status:
