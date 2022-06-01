@@ -254,15 +254,29 @@ def getCostForType(type: str) -> int:
 
 
 def getFilesCanBeAddedToDisk(diskID: int) -> List[int]:
-
-    return []
+    query = sql.SQL("""SELECT file_id FROM File WHERE file_size<=(SELECT space FROM DISK WHERE disk_id={diskId}) ORDER BY file_id DESC LIMIT 5""").format(
+        diskId=sql.Literal(diskID))
+    result = runQuery(query)
+    return result
 
 
 def getFilesCanBeAddedToDiskAndRAM(diskID: int) -> List[int]:
-    return []
+    query = sql.SQL(
+        """SELECT file_id FROM File WHERE file_size<=(SELECT space FROM DISK WHERE disk_id={diskId}) AND
+         file_size<=(SELECT SUM(ram_size) FROM Ram WHERE ram_id IN (SELECT ram_id FROM RamsToDisks WHERE disk_id={diskId})) 
+         ORDER BY file_id LIMIT 5""").format(
+        diskId=sql.Literal(diskID))
+    result = runQuery(query)
+    return result
 
 
 def isCompanyExclusive(diskID: int) -> bool:
+    # TODO transform to bool value
+    query = sql.SQL(
+        """SELECT company FROM Disk WHERE disk_id={diskId} INTERSECT 
+        (SELECT company FROM Ram WHERE ram_id IN (SELECT ram_id FROM RamsToDisks WHERE disk_id={diskId}))""").format(
+        diskId=sql.Literal(diskID))
+    result = runQuery(query)
     return True
 
 
