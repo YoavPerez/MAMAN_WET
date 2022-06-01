@@ -23,14 +23,14 @@ def create_multi_valued_tables(mv_table_params: dict):
 def createTables():
     # creating tables and designing the database
     file_table_params = {"table name": "File",
-                         "primary": {"name": "id", "type":"INTEGER", "check": "CHECK(id > 0)"},
+                         "primary": {"name": "file_id", "type":"INTEGER", "check": "CHECK(id > 0)"},
                          "fields": [
                              {"name": "type", "type":"TEXT","check":"NOT NULL"},
-                             {"name": "size", "type":"INTEGER", "check":"NOT NULL CHECK(size >= 0)"},
+                             {"name": "file_size", "type":"INTEGER", "check":"NOT NULL CHECK(size >= 0)"},
                             ]
                          }
     disk_table_params = {"table name": "Disk",
-                         "primary": {"name": "id", "type":"INTEGER", "check": "CHECK(id > 0)"},
+                         "primary": {"name": "disk_id", "type":"INTEGER", "check": "CHECK(id > 0)"},
                          "fields": [
                              {"name": "company", "type":"TEXT","check":"NOT NULL"},
                              {"name": "speed", "type":"INTEGER", "check":"NOT NULL CHECK(speed > 0)"},
@@ -39,9 +39,9 @@ def createTables():
                             ]
                          }
     ram_table_params = {"table name": "Ram",
-                        "primary": "id", "type": "INTEGER", "check": "CHECK(id > 0)",
+                        "primary": "ram_id", "type": "INTEGER", "check": "CHECK(id > 0)",
                         "fields": [
-                            {"name": "size", "type": "INTEGER", "check": "NOT NULL CHECK(space > 0)"},
+                            {"name": "ram_size", "type": "INTEGER", "check": "NOT NULL CHECK(space > 0)"},
                             {"name": "company", "type": "TEXT", "check": "NOT NULL"}
                             ]
                         }
@@ -52,11 +52,11 @@ def createTables():
                          ]
                          }
     rams_on_disks_table_params = {"table name": "RamsOnDisks",
-                                   "primary": {"name": "ram_id", "type": "INTEGER", "check": "CHECK(id > 0)",
+                        "primary": {"name": "ram_id", "type": "INTEGER", "check": "CHECK(id > 0)",
                                                "name": "disk_id", "type": "INTEGER", "check": "CHECK(id > 0)"},
-                                   "fields": [
+                        "fields": [
                                    ]
-                                   }
+                        }
 
     create_table(file_table_params)
     create_table(disk_table_params)
@@ -193,7 +193,7 @@ def addDiskAndFile(disk: Disk, file: File) -> Status:
 
 
 def addFileToDisk(file: File, diskID: int) -> Status:
-    query = sql.SQL("""INSERT INTO FilesOnDisks VALUES({fileId},{diskId}) WHERE id IN (SELECT id FROM Disk WHERE id= {diskId} AND {file_size}<=space);
+    query = sql.SQL("""INSERT INTO FilesOnDisks VALUES({fileId},{diskId}) WHERE disk_id IN (SELECT id AS disk_id FROM Disk WHERE id= {diskId} AND {file_size}<=space) AND id IN;
     UPDATE Disk SET space=space-{file_size} WHERE id={diskId};""").format(diskId=sql.Literal(diskID),fileId=sql.Literal(file.getFileID()),
     file_size=sql.Literal(file.getSize()))
     return runQuery(query)
@@ -221,18 +221,35 @@ def removeRAMFromDisk(ramID: int, diskID: int) -> Status:
 
 
 def averageFileSizeOnDisk(diskID: int) -> float:
-    return 0
+    query = sql.SQL("""SELECT AVG(size) FROM File WHERE id IN (SELECT file_id FROM FilesOnDisks WHERE disk_id = {diskId})""").format(diskId=sql.Literal(diskID))
+    result = runQuery(query)
+    return result
 
 
 def diskTotalRAM(diskID: int) -> int:
-    return 0
+    query = sql.SQL(
+        """SELECT SUM(size) FROM Ram WHERE id IN (SELECT ram_id FROM RamssOnDisks WHERE disk_id = {diskId})""").format(
+        diskId=sql.Literal(diskID))
+    result = runQuery(query)
+    return result
 
 
 def getCostForType(type: str) -> int:
-    return 0
+    # get the disks_id and files_id corresponding INNER JOIN to it the size of the files INNER JOIN
+    # the cost per bytes of the disks
+    #Multiply the two columns
+    query = sql.SQL(
+        """SELECT SUM(size*cost_per_byte) FROM (SELECT * FROM FilesOnDisk WHERE file_id in (SELECT id FROM File WHERE type={type_file}) INNER JOIN
+         (SELECT id AS file_id,size FROM File WHERE type={type_file}) 
+         INNER JOIN (SELECT id AS disk_id,cost_per_byte FROM Disk WHERE id IN 
+         (SELECT disk_id FROM FilesOnDisks WHERE file_id IN (SELECT id FROM Files WHERE type={type_file})) ))""").format(
+        type_file=sql.Literal(type))
+    result = runQuery(query)
+    return result
 
 
 def getFilesCanBeAddedToDisk(diskID: int) -> List[int]:
+
     return []
 
 
