@@ -45,10 +45,24 @@ def createTables():
                             {"name": "company", "type": "TEXT", "check": "NOT NULL"}
                             ]
                         }
+    files_on_disks_table_params = {"table name": "FilesOnDisks",
+                         "primary": {"name": "file_id", "type": "INTEGER", "check": "CHECK(id > 0)",
+                                 "name": "disk_id", "type":"INTEGER", "check": "CHECK(id > 0)"},
+                         "fields": [
+                         ]
+                         }
+    rams_on_disks_table_params = {"table name": "RamsOnDisks",
+                                   "primary": {"name": "ram_id", "type": "INTEGER", "check": "CHECK(id > 0)",
+                                               "name": "disk_id", "type": "INTEGER", "check": "CHECK(id > 0)"},
+                                   "fields": [
+                                   ]
+                                   }
 
     create_table(file_table_params)
     create_table(disk_table_params)
     create_table(ram_table_params)
+    create_table(files_on_disks_table_params)
+    create_table(rams_on_disks_table_params)
 
     # the files and ram on the disks are multivalued so we need tables for them, with disk.id as foreign key
     # TODO: understand how it works with CASCADE, FOREIGN KEYS REFERENCES, and ON DELETE
@@ -108,7 +122,7 @@ def addFile(file: File) -> Status:
 
 
 def getFileByID(fileID: int) -> File:
-    query = sql.SQL("""SELECT * FROM File WHERE File.id={fileId}""").format(fileId=sql.Literal(fileID))
+    query = sql.SQL("""SELECT * FROM File WHERE id={fileId}""").format(fileId=sql.Literal(fileID))
     try:
         result = runQuery(query)
         # TODO check what is inside result
@@ -119,12 +133,12 @@ def getFileByID(fileID: int) -> File:
 
 def deleteFile(file: File) -> Status:
     # TODO Adjust free space on disk if on one disk
-    query = sql.SQL("""DELETE FROM File WHERE file.id={fileId}""").format(fileId=sql.Literal(file.getFileID()))
+    query = sql.SQL("""DELETE FROM File WHERE id={fileId}""").format(fileId=sql.Literal(file.getFileID()))
     return runCheckQuery(query)
 
 
 def addDisk(disk: Disk) -> Status:
-    query = sql.SQL("""INSERT INTO Disk in VALUES ({diskId},{company},
+    query = sql.SQL("""INSERT INTO Disk VALUES ({diskId},{company},
     {speed},{space},{cost})""").format(diskId=sql.Literal(disk.getDiskID()),
     company=sql.Literal(disk.getCompany()),speed=sql.Literal(disk.getSpeed()),
     space=sql.Literal(disk.getFreeSpace()),cost=sql.Literal(disk.getCost()))
@@ -142,18 +156,18 @@ def getDiskByID(diskID: int) -> Disk:
 
 
 def deleteDisk(diskID: int) -> Status:
-    query = sql.SQL("""DELETE FROM Disk WHERE Disk.id={diskId}""").format(diskId=sql.Literal(diskID))
+    query = sql.SQL("""DELETE FROM Disk WHERE id={diskId}""").format(diskId=sql.Literal(diskID))
     return runCheckQuery(query)
 
 
 def addRAM(ram: RAM) -> Status:
-    query = sql.SQL("""INSERT INTO Ram in VALUES ({ramId},{size},{company})""")\
+    query = sql.SQL("""INSERT INTO Ram VALUES ({ramId},{size},{company})""")\
         .format(ramId=sql.Literal(ram.getRamID()),size=sql.Literal(ram.getSize()),company=sql.Literal(ram.getCompany()))
     return runCheckQuery(query)
 
 
 def getRAMByID(ramID: int) -> RAM:
-    query = sql.SQL("""SELECT * FROM Disk WHERE Disk.id={ramId}""").format(ramId=sql.Literal(ramID))
+    query = sql.SQL("""SELECT * FROM Disk WHERE id={ramId}""").format(ramId=sql.Literal(ramID))
     try:
         result = runQuery(query)
         # TODO check what is inside result
@@ -163,12 +177,12 @@ def getRAMByID(ramID: int) -> RAM:
 
 
 def deleteRAM(ramID: int) -> Status:
-    query = sql.SQL("""DELETE FROM Ram WHERE Ram.id={ramId}""").format(ramId=sql.Literal(ramID))
+    query = sql.SQL("""DELETE FROM Ram WHERE id={ramId}""").format(ramId=sql.Literal(ramID))
     return runCheckQuery(query)
 
 
 def addDiskAndFile(disk: Disk, file: File) -> Status:
-    query = sql.SQL("""INSERT INTO Disk in VALUES ({diskId},{company},
+    query = sql.SQL("""INSERT INTO Disk VALUES({diskId},{company},
        {disk_speed},{disk_space},{disk_cost});
        INSERT INTO File in VALUES ({fileId},{type},{size});""")\
         .format(diskId=sql.Literal(disk.getDiskID()),
@@ -179,20 +193,31 @@ def addDiskAndFile(disk: Disk, file: File) -> Status:
 
 
 def addFileToDisk(file: File, diskID: int) -> Status:
-    query = sql.SQL(f'''INSERT INTO ''')
+    query = sql.SQL("""INSERT INTO FilesOnDisks VALUES({fileId},{diskId}) WHERE id IN (SELECT id FROM Disk WHERE id= {diskId} AND {file_size}<=space);
+    UPDATE Disk SET space=space-{file_size} WHERE id={diskId};""").format(diskId=sql.Literal(diskID),fileId=sql.Literal(file.getFileID()),
+    file_size=sql.Literal(file.getSize()))
     return runQuery(query)
 
 
 def removeFileFromDisk(file: File, diskID: int) -> Status:
-    return Status.OK
+    query = sql.SQL("""DELETE FROM FilesOnDisks WHERE disk_id = diskId AND file_id = {fileId} ;
+        UPDATE Disk SET space=space+{file_size} WHERE id={diskId};""").format(diskId=sql.Literal(diskID),
+                                                                              fileId=sql.Literal(file.getFileID()),
+                                                                              file_size=sql.Literal(file.getSize()))
+    return runCheckQuery(query);
 
 
 def addRAMToDisk(ramID: int, diskID: int) -> Status:
-    return Status.OK
+    query = sql.SQL("""INSERT INTO RamsOnDisks VALUES({ramId},{diskId}) WHERE {diskId} IN (SELECT id FROM Disk WHERE id= {diskId});
+    """).format(diskId=sql.Literal(diskID),
+    ramId=sql.Literal(ramID))
+    return runCheckQuery(query)
 
 
 def removeRAMFromDisk(ramID: int, diskID: int) -> Status:
-    return Status.OK
+    query = sql.SQL("""DELETE FROM RamsOnDisks WHERE disk_id = diskId AND ram_id = {ramId} ;""")\
+        .format(diskId=sql.Literal(diskID),ramId=sql.Literal(ramID))
+    return runCheckQuery(query)
 
 
 def averageFileSizeOnDisk(diskID: int) -> float:
