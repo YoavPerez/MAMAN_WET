@@ -132,8 +132,10 @@ def getFileByID(fileID: int) -> File:
 
 
 def deleteFile(file: File) -> Status:
-    # TODO Adjust free space on disk if on one disk
-    query = sql.SQL("""DELETE FROM File WHERE id={fileId}""").format(fileId=sql.Literal(file.getFileID()))
+    query = sql.SQL("""UPDATE Disk SET space=space+{file_size} WHERE disk_id IN (SELECT disk_id FROM FilesOnDisks 
+    WHERE file_id={fileId});
+    DELETE FROM File WHERE file_id={fileId}""").format(fileId=sql.Literal(file.getFileID()),
+    file_size=sql.Literal(file.getSize()))
     return runCheckQuery(query)
 
 
@@ -146,7 +148,7 @@ def addDisk(disk: Disk) -> Status:
 
 
 def getDiskByID(diskID: int) -> Disk:
-    query = sql.SQL("""SELECT * FROM Disk WHERE Disk.id={diskId}""").format(diskId=sql.Literal(diskID))
+    query = sql.SQL("""SELECT * FROM Disk WHERE disk_id={diskId}""").format(diskId=sql.Literal(diskID))
     try:
         result = runQuery(query)
         # TODO check what is inside result
@@ -156,7 +158,7 @@ def getDiskByID(diskID: int) -> Disk:
 
 
 def deleteDisk(diskID: int) -> Status:
-    query = sql.SQL("""DELETE FROM Disk WHERE id={diskId}""").format(diskId=sql.Literal(diskID))
+    query = sql.SQL("""DELETE FROM Disk WHERE disk_id={diskId}""").format(diskId=sql.Literal(diskID))
     return runCheckQuery(query)
 
 
@@ -167,7 +169,7 @@ def addRAM(ram: RAM) -> Status:
 
 
 def getRAMByID(ramID: int) -> RAM:
-    query = sql.SQL("""SELECT * FROM Disk WHERE id={ramId}""").format(ramId=sql.Literal(ramID))
+    query = sql.SQL("""SELECT * FROM Disk WHERE ram_id={ramId}""").format(ramId=sql.Literal(ramID))
     try:
         result = runQuery(query)
         # TODO check what is inside result
@@ -177,7 +179,7 @@ def getRAMByID(ramID: int) -> RAM:
 
 
 def deleteRAM(ramID: int) -> Status:
-    query = sql.SQL("""DELETE FROM Ram WHERE id={ramId}""").format(ramId=sql.Literal(ramID))
+    query = sql.SQL("""DELETE FROM Ram WHERE ram_id={ramId}""").format(ramId=sql.Literal(ramID))
     return runCheckQuery(query)
 
 
@@ -193,22 +195,24 @@ def addDiskAndFile(disk: Disk, file: File) -> Status:
 
 
 def addFileToDisk(file: File, diskID: int) -> Status:
-    query = sql.SQL("""INSERT INTO FilesOnDisks VALUES({fileId},{diskId}) WHERE disk_id IN (SELECT id AS disk_id FROM Disk WHERE id= {diskId} AND {file_size}<=space) AND id IN;
-    UPDATE Disk SET space=space-{file_size} WHERE id={diskId};""").format(diskId=sql.Literal(diskID),fileId=sql.Literal(file.getFileID()),
+    query = sql.SQL("""INSERT INTO FilesOnDisks VALUES({fileId},{diskId}) WHERE disk_id IN 
+    (SELECT disk_id FROM Disk WHERE disk_id= {diskId} AND {file_size}<=space) AND file_id IN 
+    (SELECT file_id FROM File WHERE file_id= {fileId});
+    UPDATE Disk SET space=space-{file_size} WHERE disk_id={diskId};""").format(diskId=sql.Literal(diskID),fileId=sql.Literal(file.getFileID()),
     file_size=sql.Literal(file.getSize()))
     return runQuery(query)
 
 
 def removeFileFromDisk(file: File, diskID: int) -> Status:
     query = sql.SQL("""DELETE FROM FilesOnDisks WHERE disk_id = diskId AND file_id = {fileId} ;
-        UPDATE Disk SET space=space+{file_size} WHERE id={diskId};""").format(diskId=sql.Literal(diskID),
+        UPDATE Disk SET space=space+{file_size} WHERE disk_id={diskId};""").format(diskId=sql.Literal(diskID),
                                                                               fileId=sql.Literal(file.getFileID()),
                                                                               file_size=sql.Literal(file.getSize()))
     return runCheckQuery(query);
 
 
 def addRAMToDisk(ramID: int, diskID: int) -> Status:
-    query = sql.SQL("""INSERT INTO RamsOnDisks VALUES({ramId},{diskId}) WHERE {diskId} IN (SELECT id FROM Disk WHERE id= {diskId});
+    query = sql.SQL("""INSERT INTO RamsOnDisks VALUES({ramId},{diskId}) WHERE {diskId} IN (SELECT disk_id FROM Disk WHERE id= {diskId});
     """).format(diskId=sql.Literal(diskID),
     ramId=sql.Literal(ramID))
     return runCheckQuery(query)
@@ -221,14 +225,14 @@ def removeRAMFromDisk(ramID: int, diskID: int) -> Status:
 
 
 def averageFileSizeOnDisk(diskID: int) -> float:
-    query = sql.SQL("""SELECT AVG(size) FROM File WHERE id IN (SELECT file_id FROM FilesOnDisks WHERE disk_id = {diskId})""").format(diskId=sql.Literal(diskID))
+    query = sql.SQL("""SELECT AVG(file_size) FROM File WHERE file_id IN (SELECT file_id FROM FilesOnDisks WHERE disk_id = {diskId})""").format(diskId=sql.Literal(diskID))
     result = runQuery(query)
     return result
 
 
 def diskTotalRAM(diskID: int) -> int:
     query = sql.SQL(
-        """SELECT SUM(size) FROM Ram WHERE id IN (SELECT ram_id FROM RamssOnDisks WHERE disk_id = {diskId})""").format(
+        """SELECT SUM(ram_size) FROM Ram WHERE ram_id IN (SELECT ram_id FROM RamssOnDisks WHERE disk_id = {diskId})""").format(
         diskId=sql.Literal(diskID))
     result = runQuery(query)
     return result
@@ -238,11 +242,12 @@ def getCostForType(type: str) -> int:
     # get the disks_id and files_id corresponding INNER JOIN to it the size of the files INNER JOIN
     # the cost per bytes of the disks
     #Multiply the two columns
+    # ce a vw of the files ids that are under that type
     query = sql.SQL(
-        """SELECT SUM(size*cost_per_byte) FROM (SELECT * FROM FilesOnDisk WHERE file_id in (SELECT id FROM File WHERE type={type_file}) INNER JOIN
-         (SELECT id AS file_id,size FROM File WHERE type={type_file}) 
-         INNER JOIN (SELECT id AS disk_id,cost_per_byte FROM Disk WHERE id IN 
-         (SELECT disk_id FROM FilesOnDisks WHERE file_id IN (SELECT id FROM Files WHERE type={type_file})) ))""").format(
+        """SELECT SUM(file_size*cost_per_byte) FROM (SELECT * FROM FilesOnDisk WHERE file_id in (SELECT file_id FROM File WHERE type={type_file}) INNER JOIN
+         (SELECT file_id,file_size FROM File WHERE type={type_file}) 
+         INNER JOIN (SELECT disk_id,cost_per_byte FROM Disk WHERE disk_id IN 
+         (SELECT disk_id FROM FilesOnDisks WHERE file_id IN (SELECT file_id FROM Files WHERE type={type_file})) ))""").format(
         type_file=sql.Literal(type))
     result = runQuery(query)
     return result
