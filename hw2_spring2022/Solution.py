@@ -244,7 +244,7 @@ def getCostForType(type: str) -> int:
     #Multiply the two columns
     # ce a vw of the files ids that are under that type
     query = sql.SQL(
-        """SELECT SUM(file_size*cost_per_byte) FROM (SELECT * FROM FilesOnDisk WHERE file_id in (SELECT file_id FROM File WHERE type={type_file}) INNER JOIN
+        """SELECT SUM(file_size*cost_per_byte) FROM (SELECT * FROM FilesOnDisk WHERE file_id IN (SELECT file_id FROM File WHERE type={type_file}) INNER JOIN
          (SELECT file_id,file_size FROM File WHERE type={type_file}) 
          INNER JOIN (SELECT disk_id,cost_per_byte FROM Disk WHERE disk_id IN 
          (SELECT disk_id FROM FilesOnDisks WHERE file_id IN (SELECT file_id FROM Files WHERE type={type_file})) ))""").format(
@@ -264,7 +264,7 @@ def getFilesCanBeAddedToDiskAndRAM(diskID: int) -> List[int]:
     query = sql.SQL(
         """SELECT file_id FROM File WHERE file_size<=(SELECT space FROM DISK WHERE disk_id={diskId}) AND
          file_size<=(SELECT SUM(ram_size) FROM Ram WHERE ram_id IN (SELECT ram_id FROM RamsToDisks WHERE disk_id={diskId})) 
-         ORDER BY file_id LIMIT 5""").format(
+         ORDER BY file_id ASC LIMIT 5""").format(
         diskId=sql.Literal(diskID))
     result = runQuery(query)
     return result
@@ -281,12 +281,28 @@ def isCompanyExclusive(diskID: int) -> bool:
 
 
 def getConflictingDisks() -> List[int]:
-    return []
+    query = sql.SQL(
+        """SELECT DISTINCT F1.disk_id FROM FilesOnDisks F1, FilesOnDisks F2 
+        WHERE F1.dik_id != F2.disk_id AND F1.file_id = F2.file_id ORDER BY F1.disk_id ASC""")
+    result = runQuery(query)
+    return result
 
 
 def mostAvailableDisks() -> List[int]:
-    return []
+    query = sql.SQL(
+        """SELECT disk_id FROM 
+        (SELECT disk_id,COUNT(file_id),speed FROM (Disk LEFT OUTER JOIN File) 
+        WHERE space<file_size GROUP BY disk_id HAVING  ORDER BY COUNT(file_id) DESC, speed DESC,disk_id ASC)
+         LIMIT 5""")
+    result = runQuery(query)
+    return result
 
 
 def getCloseFiles(fileID: int) -> List[int]:
-    return []
+    query = sql.SQL(
+        """SELECT file_id FROM (SELECT disk_id,  DISTINCT file_id, COUNT(file_id) FROM FilesOnDisks WHERE file_id!={fileId}
+        AND disk_id IN (SELECT disk_id FROM FilesOnDisks WHERE file_id={fileId}) GROUP BY disk_id HAVING AVG(COUNT(file_id))>=0.5 ORDER BY file_id ASC)
+         LIMIT 10""").format(
+        fileId=sql.Literal(fileID))
+    result = runQuery(query)
+    return result
