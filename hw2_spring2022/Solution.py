@@ -42,44 +42,40 @@ def create_table(table_params: dict):
     return query
 
 
-# the difference is the outline of the dictionary, can be in the function above but it is quite confusing to my opinion.
-def create_multi_valued_tables(mv_table_params: dict):
-    pass
-
-
 def createTables():
     # creating tables and designing the database
     query = "BEGIN;"
 
+
     # PARAMETERS FOR CREATING THE FILES TABLE
     files_table = {"table name": "File", "fields": [
-        {"name": "id", "type": "INTEGER", "check": "CHECK (id > 0)"},
+        {"name": "file_id", "type": "INTEGER", "check": "CHECK (file_id > 0)"},
         {"name": "type", "type": "TEXT", "check": "NOT NULL"},
         {"name": "size", "type": "INTEGER", "check": "NOT NULL CHECK (size >= 0)"}
-    ], "primaries": ["id"]}
+    ], "primaries": ["file_id"]}
 
     # PARAMETERS FOR CREATING THE DISKS TABLE
     disks_table = {}
     disks_table["table name"] = "Disk"
     disks_table["fields"] = [
-                            {"name": "id", "type": "INTEGER", "check": "CHECK (id > 0)"},
+                            {"name": "disk_id", "type": "INTEGER", "check": "CHECK (disk_id > 0)"},
                             {"name": "company", "type": "TEXT", "check": "NOT NULL"},
                             {"name": "speed", "type": "INTEGER", "check": "NOT NULL CHECK (speed > 0)"},
                             {"name": "space", "type": "INTEGER", "check": "NOT NULL CHECK (space >= 0)"},
                             {"name": "cost_per_byte", "type": "INTEGER", "check": "NOT NULL CHECK (cost_per_byte > 0)"}
                         ]
-    disks_table["primaries"] = ["id"]
+    disks_table["primaries"] = ["disk_id"]
 
     # PARAMETERS FOR CREATING THE RAMS TABLE
     rams_table = {}
     rams_table["table name"] = "Ram"
     rams_table["fields"] = [
-                            {"name": "id", "type": "INTEGER", "check": "CHECK (id > 0)"},
+                            {"name": "ram_id", "type": "INTEGER", "check": "CHECK (ram_id > 0)"},
                             {"name": "size", "type": "INTEGER", "check": "NOT NULL CHECK (size  > 0)"},
                             {"name": "company", "type": "TEXT", "check": "NOT NULL"}
                         ]
 
-    rams_table["primaries"] = ["id"]
+    rams_table["primaries"] = ["ram_id"]
 
     # PARAMETERS FOR CREATING THE MULTI VALUED FILES FOR DISKS TABLE
     disk_mv_files = {}
@@ -87,8 +83,8 @@ def createTables():
     disk_mv_files["fields"] = [{"name": "file_id", "type": "INTEGER", "check": ""},
                                {"name": "disk_id", "type": "INTEGER", "check": ""}]
     disk_mv_files["primaries"] = ["file_id", "disk_id"]
-    disk_mv_files["foreign"] = [{"name": "disk_id", "orig table": "Disk", "orig name": "id"},
-                                               {"name": "file_id", "orig table": "File", "orig name": "id"}]
+    disk_mv_files["foreign"] = [{"name": "disk_id", "orig table": "Disk", "orig name": "disk_id"},
+                                               {"name": "file_id", "orig table": "File", "orig name": "file_id"}]
 
     # PARAMETERS FOR CREATING THE MULTI VALUED RAMS FOR DISKS TABLE
     disk_mv_rams = {}
@@ -97,8 +93,8 @@ def createTables():
                                             {"name": "disk_id", "type": "INTEGER", "check": ""}]
 
     disk_mv_rams["primaries"] = ["ram_id", "disk_id"]
-    disk_mv_rams["foreign"] = [{"name": "disk_id", "orig table": "Disk", "orig name": "id"},
-                                              {"name": "ram_id", "orig table": "Ram", "orig name": "id"}]
+    disk_mv_rams["foreign"] = [{"name": "disk_id", "orig table": "Disk", "orig name": "disk_id"},
+                                              {"name": "ram_id", "orig table": "Ram", "orig name": "ram_id"}]
 
 
     # getting the contribution for the total query from each table
@@ -111,14 +107,21 @@ def createTables():
     # TODO: add VIEW to help complex calculating
 
     query += "COMMIT;"
-    return query
+    return runCheckQuery(query)
 
 def clearTables():
     pass
 
 
 def dropTables():
-    pass
+    query = """BEGIN;
+                DROP TABLE FilesOnDisks;
+                DROP TABLE RamsOnDisks;
+                DROP TABLE File;
+                DROP TABLE Disk;
+                DROP TABLE Ram;
+                COMMIT;"""
+    return runCheckQuery(query)
 
 def runQuery(query):
     connector = None
@@ -347,11 +350,8 @@ def getCloseFiles(fileID: int) -> List[int]:
 if __name__ == "__main__":
     conn = None
     try:
-        conn = Connector.DBConnector()
-        q = createTables()
-        print(q)
-        conn.execute(q)
-        conn.commit()
+        dropTables()
+        createTables()
     except DatabaseException.ConnectionInvalid as e:
         print(e)
     except DatabaseException.NOT_NULL_VIOLATION as e:
@@ -366,4 +366,4 @@ if __name__ == "__main__":
         print(e)
     finally:
         # will happen any way after try termination or exception handling
-        conn.close()
+       print("by")
