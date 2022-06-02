@@ -78,6 +78,7 @@ def createTables():
                             {"name": "size", "type": "INTEGER", "check": "NOT NULL CHECK (size  > 0)"},
                             {"name": "company", "type": "TEXT", "check": "NOT NULL"}
                         ]
+
     rams_table["primaries"] = ["id"]
 
     # PARAMETERS FOR CREATING THE MULTI VALUED FILES FOR DISKS TABLE
