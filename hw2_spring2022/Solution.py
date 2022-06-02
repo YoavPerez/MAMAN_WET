@@ -10,6 +10,7 @@ from psycopg2 import sql
 
 # create the main tables from the parameters.
 def create_table(table_params: dict):
+    '''
     query = "CREATE TABLE "
     # add the parameters to the query and perform it.
     query += table_params["table name"] + "\n("
@@ -39,10 +40,12 @@ def create_table(table_params: dict):
                 query += "\n"
     else: query += "\n"
     query += ");\n"
-    return query
-
+    runQuery(query)
+    '''
+    return Status.OK
 
 def createTables():
+    '''
     # creating tables and designing the database
     query = "BEGIN;"
 
@@ -51,8 +54,8 @@ def createTables():
     files_table = {"table name": "File", "fields": [
         {"name": "file_id", "type": "INTEGER", "check": "CHECK (file_id > 0)"},
         {"name": "type", "type": "TEXT", "check": "NOT NULL"},
-        {"name": "size", "type": "INTEGER", "check": "NOT NULL CHECK (size >= 0)"}
-    ], "primaries": ["file_id"]}
+        {"name": "file_size", "type": "INTEGER", "check": "NOT NULL CHECK (file_size >= 0)"}
+    ], "primaries": ["id"]}
 
     # PARAMETERS FOR CREATING THE DISKS TABLE
     disks_table = {}
@@ -107,7 +110,51 @@ def createTables():
     # TODO: add VIEW to help complex calculating
 
     query += "COMMIT;"
-    return runCheckQuery(query)
+    '''
+
+    query = """BEGIN;
+    CREATE TABLE File
+    (file_id INTEGER PRIMARY KEY CHECK (file_id > 0), 
+    type TEXT NOT NULL, 
+    file_size INTEGER NOT NULL CHECK (file_size >= 0)
+    );
+    CREATE TABLE Disk
+    (disk_id INTEGER  PRIMARY KEY CHECK (disk_id > 0), 
+    company TEXT NOT NULL, 
+    speed INTEGER NOT NULL CHECK (speed > 0), 
+    space INTEGER NOT NULL CHECK (space >= 0), 
+    cost_per_byte INTEGER NOT NULL CHECK (cost_per_byte > 0)
+    );
+    CREATE TABLE Ram
+    (ram_id INTEGER  PRIMARY KEY CHECK (ram_id > 0), 
+    ram_size INTEGER NOT NULL CHECK (ram_size  > 0), 
+    company TEXT NOT NULL
+    );
+    CREATE TABLE FilesOnDisks
+    (file_id INTEGER, 
+    disk_id INTEGER,
+    PRIMARY KEY (file_id,disk_id),
+    FOREIGN KEY (disk_id)
+     REFERENCES Disk (disk_id)
+     ON DELETE CASCADE,
+    FOREIGN KEY (file_id)
+     REFERENCES File (file_id)
+     ON DELETE CASCADE
+    );
+    CREATE TABLE RamsOnDisks
+    (ram_id INTEGER , 
+    disk_id INTEGER , 
+    PRIMARY KEY (ram_id, disk_id), 
+    FOREIGN KEY (disk_id)
+     REFERENCES Disk (disk_id)
+     ON DELETE CASCADE,
+    FOREIGN KEY (ram_id)
+     REFERENCES Ram (ram_id)
+     ON DELETE CASCADE
+    );
+    COMMIT;"""
+    runQuery(query)
+    return Status.OK
 
 def clearTables():
     query = """BEGIN;
@@ -185,8 +232,8 @@ def deleteFile(file: File) -> Status:
 
 
 def addDisk(disk: Disk) -> Status:
-    query = sql.SQL("""INSERT INTO Disk VALUES ({diskId},{company},
-    {speed},{space},{cost})""").format(diskId=sql.Literal(disk.getDiskID()),
+    query = sql.SQL("""INSERT INTO Disk VALUES ({diskId},{company},{speed},{space},{cost})""")\
+        .format(diskId=sql.Literal(disk.getDiskID()),
     company=sql.Literal(disk.getCompany()),speed=sql.Literal(disk.getSpeed()),
     space=sql.Literal(disk.getFreeSpace()),cost=sql.Literal(disk.getCost()))
     return runCheckQuery(query)
@@ -231,7 +278,7 @@ def deleteRAM(ramID: int) -> Status:
 def addDiskAndFile(disk: Disk, file: File) -> Status:
     query = sql.SQL("""INSERT INTO Disk VALUES({diskId},{company},
        {disk_speed},{disk_space},{disk_cost});
-       INSERT INTO File in VALUES ({fileId},{type},{size});""")\
+       INSERT INTO File VALUES ({fileId},{type},{size});""")\
         .format(diskId=sql.Literal(disk.getDiskID()),
     company=sql.Literal(disk.getCompany()),disk_speed=sql.Literal(disk.getSpeed()),
     disk_space=sql.Literal(disk.getFreeSpace()),disk_cost=sql.Literal(disk.getCost()),fileId=sql.Literal(file.getFileID()),
@@ -358,7 +405,7 @@ if __name__ == "__main__":
     conn = None
     try:
         dropTables()
-        createTables()
+        #createTables()
     except DatabaseException.ConnectionInvalid as e:
         print(e)
     except DatabaseException.NOT_NULL_VIOLATION as e:
@@ -373,4 +420,4 @@ if __name__ == "__main__":
         print(e)
     finally:
         # will happen any way after try termination or exception handling
-       print("by")
+       print("bye")
