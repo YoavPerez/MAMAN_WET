@@ -1,7 +1,7 @@
 import psycopg2
 from psycopg2 import errors, sql
 from configparser import ConfigParser
-from Utility.Exceptions import DatabaseException
+from hw2_spring2022.Utility.Exceptions import DatabaseException
 import os
 from typing import Union
 

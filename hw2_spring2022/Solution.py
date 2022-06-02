@@ -44,6 +44,7 @@ def create_table(table_params: dict):
     '''
     return Status.OK
 
+
 def createTables():
     '''
     # creating tables and designing the database
@@ -114,21 +115,29 @@ def createTables():
 
     query = """BEGIN;
     CREATE TABLE File
-    (file_id INTEGER PRIMARY KEY CHECK (file_id > 0), 
+    (file_id INTEGER PRIMARY KEY , 
     type TEXT NOT NULL, 
-    file_size INTEGER NOT NULL CHECK (file_size >= 0)
+    file_size INTEGER NOT NULL ,
+    CHECK (file_id > 0),
+    CHECK (file_size >= 0)
     );
     CREATE TABLE Disk
     (disk_id INTEGER  PRIMARY KEY CHECK (disk_id > 0), 
     company TEXT NOT NULL, 
-    speed INTEGER NOT NULL CHECK (speed > 0), 
-    space INTEGER NOT NULL CHECK (space >= 0), 
-    cost_per_byte INTEGER NOT NULL CHECK (cost_per_byte > 0)
+    speed INTEGER NOT NULL , 
+    space INTEGER NOT NULL , 
+    cost_per_byte INTEGER NOT NULL ,
+    CHECK (speed > 0),
+    CHECK (space >= 0),
+    CHECK (cost_per_byte > 0)
+    
     );
     CREATE TABLE Ram
-    (ram_id INTEGER  PRIMARY KEY CHECK (ram_id > 0), 
-    ram_size INTEGER NOT NULL CHECK (ram_size  > 0), 
-    company TEXT NOT NULL
+    (ram_id INTEGER  PRIMARY KEY , 
+    ram_size INTEGER NOT NULL , 
+    company TEXT NOT NULL,
+    CHECK (ram_id > 0),
+    CHECK (ram_size  > 0)
     );
     CREATE TABLE FilesOnDisks
     (file_id INTEGER, 
@@ -152,9 +161,16 @@ def createTables():
      REFERENCES Ram (ram_id)
      ON DELETE CASCADE
     );
+    
+    CREATE VIEW best_disks AS( 
+    SELECT disk_id FROM (SELECT (disk_id,speed, COUNT(file_id)) FROM Disk LEFT OUTER JOIN File ON(Disk.space >= File.file_size)
+        GROUP BY disk_id
+		ORDER BY COUNT(file_id) DESC, speed DESC,disk_id ASC
+        LIMIT 5);
     COMMIT;"""
     runQuery(query)
     return Status.OK
+
 
 def clearTables():
     query = """BEGIN;
@@ -176,6 +192,7 @@ def dropTables():
                 DROP TABLE Ram;
                 COMMIT;"""
     return runCheckQuery(query)
+
 
 def runQuery(query):
     connector = None
@@ -209,33 +226,35 @@ def runCheckQuery(queryString) -> Status:
 
 def addFile(file: File) -> Status:
     query = sql.SQL("""INSERT INTO File VALUES({id}, {type}, {size})""").format(id=sql.Literal(file.getFileID()),
-    type=sql.Literal(file.getType()), size=sql.Literal(file.getSize()))
+                                                                                type=sql.Literal(file.getType()),
+                                                                                size=sql.Literal(file.getSize()))
     return runCheckQuery(query)
 
 
 def getFileByID(fileID: int) -> File:
-    query = sql.SQL("""SELECT * FROM File WHERE id={fileId}""").format(fileId=sql.Literal(fileID))
+    query = sql.SQL("""SELECT * FROM File WHERE file_id={fileId}""").format(fileId=sql.Literal(fileID))
     try:
         result = runQuery(query)
         # TODO check what is inside result
-        return result
-    except:
-        return File.Badfile()
+        Id, kind, size = result[1].rows[0]
+        return File(Id, kind, size)
+    except Exception:
+        return File.badFile()
 
 
 def deleteFile(file: File) -> Status:
     query = sql.SQL("""UPDATE Disk SET space=space+{file_size} WHERE disk_id IN (SELECT disk_id FROM FilesOnDisks 
     WHERE file_id={fileId});
     DELETE FROM File WHERE file_id={fileId}""").format(fileId=sql.Literal(file.getFileID()),
-    file_size=sql.Literal(file.getSize()))
+                                                       file_size=sql.Literal(file.getSize()))
     return runCheckQuery(query)
 
 
 def addDisk(disk: Disk) -> Status:
-    query = sql.SQL("""INSERT INTO Disk VALUES ({diskId},{company},{speed},{space},{cost})""")\
+    query = sql.SQL("""INSERT INTO Disk VALUES ({diskId},{company},{speed},{space},{cost})""") \
         .format(diskId=sql.Literal(disk.getDiskID()),
-    company=sql.Literal(disk.getCompany()),speed=sql.Literal(disk.getSpeed()),
-    space=sql.Literal(disk.getFreeSpace()),cost=sql.Literal(disk.getCost()))
+                company=sql.Literal(disk.getCompany()), speed=sql.Literal(disk.getSpeed()),
+                space=sql.Literal(disk.getFreeSpace()), cost=sql.Literal(disk.getCost()))
     return runCheckQuery(query)
 
 
@@ -244,7 +263,8 @@ def getDiskByID(diskID: int) -> Disk:
     try:
         result = runQuery(query)
         # TODO check what is inside result
-        return result
+        Id, company, speed, space, cost = result[1].rows[0]
+        return Disk(Id, company, speed, space, cost)
     except:
         return Disk.badDisk()
 
@@ -255,17 +275,19 @@ def deleteDisk(diskID: int) -> Status:
 
 
 def addRAM(ram: RAM) -> Status:
-    query = sql.SQL("""INSERT INTO Ram VALUES ({ramId},{size},{company})""")\
-        .format(ramId=sql.Literal(ram.getRamID()),size=sql.Literal(ram.getSize()),company=sql.Literal(ram.getCompany()))
+    query = sql.SQL("""INSERT INTO Ram VALUES ({ramId},{size},{company})""") \
+        .format(ramId=sql.Literal(ram.getRamID()), size=sql.Literal(ram.getSize()),
+                company=sql.Literal(ram.getCompany()))
     return runCheckQuery(query)
 
 
 def getRAMByID(ramID: int) -> RAM:
-    query = sql.SQL("""SELECT * FROM Disk WHERE ram_id={ramId}""").format(ramId=sql.Literal(ramID))
+    query = sql.SQL("""SELECT * FROM Ram WHERE ram_id={ramId}""").format(ramId=sql.Literal(ramID))
     try:
         result = runQuery(query)
         # TODO check what is inside result
-        return result
+        Id, size, comp = result[1].rows[0]
+        return RAM(Id, comp, size)
     except:
         return RAM.badRAM()
 
@@ -278,62 +300,82 @@ def deleteRAM(ramID: int) -> Status:
 def addDiskAndFile(disk: Disk, file: File) -> Status:
     query = sql.SQL("""INSERT INTO Disk VALUES({diskId},{company},
        {disk_speed},{disk_space},{disk_cost});
-       INSERT INTO File VALUES ({fileId},{type},{size});""")\
+       INSERT INTO File VALUES ({fileId},{type},{size});""") \
         .format(diskId=sql.Literal(disk.getDiskID()),
-    company=sql.Literal(disk.getCompany()),disk_speed=sql.Literal(disk.getSpeed()),
-    disk_space=sql.Literal(disk.getFreeSpace()),disk_cost=sql.Literal(disk.getCost()),fileId=sql.Literal(file.getFileID()),
-    type=sql.Literal(file.getType()), size=sql.Literal(file.getSize()))
+                company=sql.Literal(disk.getCompany()), disk_speed=sql.Literal(disk.getSpeed()),
+                disk_space=sql.Literal(disk.getFreeSpace()), disk_cost=sql.Literal(disk.getCost()),
+                fileId=sql.Literal(file.getFileID()),
+                type=sql.Literal(file.getType()), size=sql.Literal(file.getSize()))
     return runCheckQuery(query)
 
 
 def addFileToDisk(file: File, diskID: int) -> Status:
-    query = sql.SQL("""INSERT INTO FilesOnDisks VALUES({fileId},{diskId}) WHERE disk_id IN 
-    (SELECT disk_id FROM Disk WHERE disk_id= {diskId} AND {file_size}<=space) AND file_id IN 
-    (SELECT file_id FROM File WHERE file_id= {fileId});
-    UPDATE Disk SET space=space-{file_size} WHERE disk_id={diskId};""").format(diskId=sql.Literal(diskID),fileId=sql.Literal(file.getFileID()),
-    file_size=sql.Literal(file.getSize()))
-    return runQuery(query)
+    query = sql.SQL("""INSERT INTO FilesOnDisks VALUES({fileId},{diskId});
+    UPDATE Disk SET space=space-{file_size} WHERE disk_id={diskId} ;
+     COMMIT;""").format(diskId=sql.Literal(diskID), fileId=sql.Literal(file.getFileID()),
+                        file_size=sql.Literal(file.getSize()))
+    return runCheckQuery(query)
 
 
 def removeFileFromDisk(file: File, diskID: int) -> Status:
-    query = sql.SQL("""DELETE FROM FilesOnDisks WHERE disk_id = diskId AND file_id = {fileId} ;
-        UPDATE Disk SET space=space+{file_size} WHERE disk_id={diskId};""").format(diskId=sql.Literal(diskID),
-                                                                              fileId=sql.Literal(file.getFileID()),
-                                                                              file_size=sql.Literal(file.getSize()))
+    query = sql.SQL("""
+    UPDATE Disk SET space=space+{file_size} WHERE disk_id IN (SELECT disk_id FROM FilesOnDisks WHERE file_id={fileId});
+    DELETE FROM FilesOnDisks WHERE disk_id = {diskId} AND file_id = {fileId};
+     
+        """).format(diskId=sql.Literal(diskID),
+                                                                                   fileId=sql.Literal(file.getFileID()),
+                                                                                   file_size=sql.Literal(
+                                                                                       file.getSize()))
     return runCheckQuery(query);
 
 
 def addRAMToDisk(ramID: int, diskID: int) -> Status:
-    query = sql.SQL("""INSERT INTO RamsOnDisks VALUES({ramId},{diskId}) WHERE {diskId} IN (SELECT disk_id FROM Disk WHERE id= {diskId});
+    query = sql.SQL("""INSERT INTO RamsOnDisks VALUES({ramId},{diskId});
     """).format(diskId=sql.Literal(diskID),
-    ramId=sql.Literal(ramID))
+                ramId=sql.Literal(ramID))
     return runCheckQuery(query)
 
 
 def removeRAMFromDisk(ramID: int, diskID: int) -> Status:
-    query = sql.SQL("""DELETE FROM RamsOnDisks WHERE disk_id = diskId AND ram_id = {ramId} ;""")\
-        .format(diskId=sql.Literal(diskID),ramId=sql.Literal(ramID))
-    return runCheckQuery(query)
+    query = sql.SQL("""DELETE FROM RamsOnDisks WHERE disk_id = {diskId} AND ram_id = {ramId} ;""") \
+        .format(diskId=sql.Literal(diskID), ramId=sql.Literal(ramID))
+
+    try:
+        res = runQuery(query)
+        if res[0] == 0: return Status.NOT_EXISTS
+        return Status.OK
+    except Exception: return Status.ERROR
+
 
 
 def averageFileSizeOnDisk(diskID: int) -> float:
-    query = sql.SQL("""SELECT AVG(file_size) FROM File WHERE file_id IN (SELECT file_id FROM FilesOnDisks WHERE disk_id = {diskId})""").format(diskId=sql.Literal(diskID))
-    result = runQuery(query)
-    return result
+    query = sql.SQL(
+        """SELECT COALESCE(AVG(file_size),0) FROM File WHERE file_id IN (SELECT file_id FROM FilesOnDisks WHERE disk_id = {diskId})""").format(
+        diskId=sql.Literal(diskID))
+
+    try:
+        result = runQuery(query)
+        return float(result[1].rows[0][0])
+    except Exception:
+        return -1
 
 
 def diskTotalRAM(diskID: int) -> int:
     query = sql.SQL(
-        """SELECT SUM(ram_size) FROM Ram WHERE ram_id IN (SELECT ram_id FROM RamssOnDisks WHERE disk_id = {diskId})""").format(
+        """SELECT COALESCE(SUM(ram_size),0) FROM Ram WHERE ram_id IN (SELECT ram_id FROM RamsOnDisks WHERE disk_id = {diskId})""").format(
         diskId=sql.Literal(diskID))
-    result = runQuery(query)
-    return result
+
+    try:
+        result = runQuery(query)
+        return int(result[1].rows[0][0])
+    except Exception:
+        return -1
 
 
 def getCostForType(type: str) -> int:
     # get the disks_id and files_id corresponding INNER JOIN to it the size of the files INNER JOIN
     # the cost per bytes of the disks
-    #Multiply the two columns
+    # Multiply the two columns
     # ce a vw of the files ids that are under that type
     query = sql.SQL(
         """SELECT SUM(file_size*cost_per_byte) FROM (SELECT * FROM FilesOnDisk WHERE file_id IN (SELECT file_id FROM File WHERE type={type_file}) INNER JOIN
@@ -346,48 +388,52 @@ def getCostForType(type: str) -> int:
 
 
 def getFilesCanBeAddedToDisk(diskID: int) -> List[int]:
-    query = sql.SQL("""SELECT file_id FROM File WHERE file_size<=(SELECT space FROM DISK WHERE disk_id={diskId}) ORDER BY file_id DESC LIMIT 5""").format(
+    query = sql.SQL(
+        """SELECT file_id FROM File 
+            WHERE file_size <= (SELECT space FROM Disk WHERE disk_id={diskId}) 
+           ORDER BY file_id DESC LIMIT 5""").format(
         diskId=sql.Literal(diskID))
     result = runQuery(query)
-    return result
+    return [tup[0] for tup in result[1].rows]
 
 
 def getFilesCanBeAddedToDiskAndRAM(diskID: int) -> List[int]:
     query = sql.SQL(
         """SELECT file_id FROM File WHERE file_size<=(SELECT space FROM DISK WHERE disk_id={diskId}) AND
-         file_size<=(SELECT SUM(ram_size) FROM Ram WHERE ram_id IN (SELECT ram_id FROM RamsToDisks WHERE disk_id={diskId})) 
+         file_size<=(SELECT SUM(ram_size) FROM Ram WHERE ram_id IN (SELECT ram_id FROM RamsOnDisks WHERE disk_id={diskId})) 
          ORDER BY file_id ASC LIMIT 5""").format(
         diskId=sql.Literal(diskID))
     result = runQuery(query)
-    return result
+    return [tup[0] for tup in result[1].rows]
 
 
 def isCompanyExclusive(diskID: int) -> bool:
     # TODO transform to bool value
     query = sql.SQL(
-        """SELECT company FROM Disk WHERE disk_id={diskId} INTERSECT 
-        (SELECT company FROM Ram WHERE ram_id IN (SELECT ram_id FROM RamsToDisks WHERE disk_id={diskId}))""").format(
+        """ SELECT company FROM Disk WHERE disk_id={diskId} AND 
+        company=ALL(SELECT company FROM Ram WHERE ram_id IN (SELECT ram_id FROM RamsOnDisks WHERE disk_id={diskId}));
+        """).format(
         diskId=sql.Literal(diskID))
-    result = runQuery(query)
-    return True
+    try:
+        result = runQuery(query)
+        return result[0] == 1
+    except Exception:
+        return False
 
 
 def getConflictingDisks() -> List[int]:
     query = sql.SQL(
         """SELECT DISTINCT F1.disk_id FROM FilesOnDisks F1, FilesOnDisks F2 
-        WHERE F1.dik_id != F2.disk_id AND F1.file_id = F2.file_id ORDER BY F1.disk_id ASC""")
+        WHERE F1.disk_id != F2.disk_id AND F1.file_id = F2.file_id ORDER BY F1.disk_id ASC
+        """)
     result = runQuery(query)
-    return result
+    return [tup[0] for tup in result[1].rows]
 
 
 def mostAvailableDisks() -> List[int]:
-    query = sql.SQL(
-        """SELECT disk_id FROM 
-        (SELECT disk_id,COUNT(file_id),speed FROM (Disk LEFT OUTER JOIN File) 
-        WHERE space<file_size GROUP BY disk_id HAVING  ORDER BY COUNT(file_id) DESC, speed DESC,disk_id ASC)
-         LIMIT 5""")
+    query = sql.SQL("""SELECT disk_id FROM BESTDISKS""")
     result = runQuery(query)
-    return result
+    return [tup[0] for tup in result[1].rows]
 
 
 def getCloseFiles(fileID: int) -> List[int]:
@@ -405,7 +451,7 @@ if __name__ == "__main__":
     conn = None
     try:
         dropTables()
-        #createTables()
+        # createTables()
     except DatabaseException.ConnectionInvalid as e:
         print(e)
     except DatabaseException.NOT_NULL_VIOLATION as e:
@@ -420,4 +466,4 @@ if __name__ == "__main__":
         print(e)
     finally:
         # will happen any way after try termination or exception handling
-       print("bye")
+        print("bye")

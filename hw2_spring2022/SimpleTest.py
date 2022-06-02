@@ -1,10 +1,10 @@
 import unittest
-import Solution
-from Utility.Status import Status
+import hw2_spring2022.Solution as Solution
+from hw2_spring2022.Utility.Status import Status
 from hw2_spring2022.abstractTest import AbstractTest
-from Business.File import File
-from Business.RAM import RAM
-from Business.Disk import Disk
+from hw2_spring2022.Business.File import File
+from hw2_spring2022.Business.RAM import RAM
+from hw2_spring2022.Business.Disk import Disk
 '''
     Simple test, create one of your own
     make sure the tests' names start with test_
@@ -1183,4 +1183,5 @@ class Test(AbstractTest):
 
 
 if __name__ == '__main__':
+    print('hey i just met you and this is crazy')
     unittest.main(verbosity=2, exit=False)
