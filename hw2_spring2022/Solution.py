@@ -162,6 +162,7 @@ def createTables():
      ON DELETE CASCADE
     );
     
+    
     CREATE VIEW best_disks AS( 
     SELECT disk_id FROM (SELECT (disk_id,speed, COUNT(file_id)) FROM Disk LEFT OUTER JOIN File ON(Disk.space >= File.file_size)
         GROUP BY disk_id
