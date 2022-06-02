@@ -1183,5 +1183,5 @@ class Test(AbstractTest):
 
 
 if __name__ == '__main__':
-    print('hey i just met you and this is crazy')
+    print('hey i just met you and this is razy')
     unittest.main(verbosity=2, exit=False)

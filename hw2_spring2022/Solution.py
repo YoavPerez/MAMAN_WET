@@ -161,13 +161,16 @@ def createTables():
      REFERENCES Ram (ram_id)
      ON DELETE CASCADE
     );
+   CREATE VIEW good_disks AS 
+        SELECT disk_id, speed, COUNT(file_id) AS count_file FROM Disk LEFT OUTER JOIN File ON(Disk.space >= File.file_size) GROUP BY disk_id;
     
+    CREATE VIEW files_data AS SELECT FilesOndisks.file_id, FilesOnDisks.disk_id, File.type, File.file_size FROM FilesOnDisks 
+    LEFT OUTER JOIN File ON FilesOnDisks.file_id=File.file_id;
     
-    CREATE VIEW best_disks AS( 
-    SELECT disk_id FROM (SELECT (disk_id,speed, COUNT(file_id)) FROM Disk LEFT OUTER JOIN File ON(Disk.space >= File.file_size)
-        GROUP BY disk_id
-		ORDER BY COUNT(file_id) DESC, speed DESC,disk_id ASC
-        LIMIT 5);
+    CREATE VIEW all_data AS SELECT 
+    files_data.file_id, files_data.disk_id, files_data.type, files_data.file_size, Disk.cost_per_byte 
+    FROM files_data LEFT OUTER JOIN Disk ON Disk.disk_id=files_data.disk_id;
+
     COMMIT;"""
     runQuery(query)
     return Status.OK
@@ -177,15 +180,18 @@ def clearTables():
     query = """BEGIN;
                     CLEAR TABLE FilesOnDisks;
                     CLEAR TABLE RamsOnDisks;
-                    CLEAR DROP TABLE File;
-                    CLEAR DROP TABLE Disk;
-                    CLEAR DROP TABLE Ram;
+                    CLEAR TABLE File;
+                    CLEAR TABLE Disk;
+                    CLEAR TABLE Ram;
                     COMMIT;"""
     return runCheckQuery(query)
 
 
 def dropTables():
     query = """BEGIN;
+                DROP VIEW all_data;
+                DROP VIEW files_data;
+                DROP VIEW good_disks;
                 DROP TABLE FilesOnDisks;
                 DROP TABLE RamsOnDisks;
                 DROP TABLE File;
@@ -220,7 +226,7 @@ def runCheckQuery(queryString) -> Status:
         return Status.NOT_EXISTS
     except (DatabaseException.NOT_NULL_VIOLATION, DatabaseException.CHECK_VIOLATION):
         return Status.BAD_PARAMS
-    except Exception:
+    except Exception as e:
         return Status.ERROR
     return Status.OK
 
@@ -379,13 +385,13 @@ def getCostForType(type: str) -> int:
     # Multiply the two columns
     # ce a vw of the files ids that are under that type
     query = sql.SQL(
-        """SELECT SUM(file_size*cost_per_byte) FROM (SELECT * FROM FilesOnDisk WHERE file_id IN (SELECT file_id FROM File WHERE type={type_file}) INNER JOIN
-         (SELECT file_id,file_size FROM File WHERE type={type_file}) 
-         INNER JOIN (SELECT disk_id,cost_per_byte FROM Disk WHERE disk_id IN 
-         (SELECT disk_id FROM FilesOnDisks WHERE file_id IN (SELECT file_id FROM Files WHERE type={type_file})) ))""").format(
+        """SELECT SUM(all_data.cost_per_byte* all_data.file_size) FROM all_data WHERE all_data.type={type_file};""").format(
         type_file=sql.Literal(type))
     result = runQuery(query)
-    return result
+    try:
+        return int(result[1].rows[0][0])
+    except Exception:
+        return 0
 
 
 def getFilesCanBeAddedToDisk(diskID: int) -> List[int]:
@@ -432,19 +438,24 @@ def getConflictingDisks() -> List[int]:
 
 
 def mostAvailableDisks() -> List[int]:
-    query = sql.SQL("""SELECT disk_id FROM BESTDISKS""")
-    result = runQuery(query)
-    return [tup[0] for tup in result[1].rows]
+    query = sql.SQL(
+        """SELECT disk_id FROM good_disks
+		ORDER BY count_file DESC, speed DESC,disk_id ASC
+        LIMIT 5;""")
+    result = runQuery(query)[1].rows
+    return [tup[0] for tup in result]
 
 
 def getCloseFiles(fileID: int) -> List[int]:
     query = sql.SQL(
-        """SELECT file_id FROM (SELECT disk_id,  DISTINCT file_id, COUNT(file_id) FROM FilesOnDisks WHERE file_id!={fileId}
-        AND disk_id IN (SELECT disk_id FROM FilesOnDisks WHERE file_id={fileId}) GROUP BY disk_id HAVING AVG(COUNT(file_id))>=0.5 ORDER BY file_id ASC)
+        """SELECT DISTINCT D2.file_id FROM FilesOnDisks D1,FilesOnDisks D2 
+        WHERE (D1.disk_id=D2.disk_id AND D1.file_id={fileId} AND D2.file_id!={fileId}) OR 0=(SELECT COUNT(file_id) FROM FilesOnDisks WHERE file_id={fileId})
+         GROUP BY D2.file_id HAVING (COUNT(D2.disk_id))>=(0.5*(SELECT COUNT(disk_id) FROM FilesOnDisks WHERE file_id={fileId})) 
+		 ORDER BY D2.file_id
          LIMIT 10""").format(
         fileId=sql.Literal(fileID))
-    result = runQuery(query)
-    return result
+    result = runQuery(query)[1].rows
+    return [tup[0] for tup in result]
 
 
 ####### test create table #######
