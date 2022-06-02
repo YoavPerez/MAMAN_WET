@@ -110,7 +110,14 @@ def createTables():
     return runCheckQuery(query)
 
 def clearTables():
-    pass
+    query = """BEGIN;
+                    CLEAR TABLE FilesOnDisks;
+                    CLEAR TABLE RamsOnDisks;
+                    CLEAR DROP TABLE File;
+                    CLEAR DROP TABLE Disk;
+                    CLEAR DROP TABLE Ram;
+                    COMMIT;"""
+    return runCheckQuery(query)
 
 
 def dropTables():
