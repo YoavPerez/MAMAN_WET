@@ -170,6 +170,10 @@ def createTables():
     CREATE OR REPLACE VIEW all_data AS SELECT 
     files_data.file_id, files_data.disk_id, files_data.type, files_data.file_size, Disk.cost_per_byte 
     FROM files_data LEFT OUTER JOIN Disk ON Disk.disk_id=files_data.disk_id;
+    
+    create or replace view fullfile as
+    select File.file_id as fid,
+    COALESCE (filesondisks.file_id,0) as fod_id from file full join filesondisks on File.file_id = filesondisks.file_id;
 
     COMMIT;"""
     runQuery(query)
@@ -189,6 +193,7 @@ def clearTables():
 
 def dropTables():
     query = """BEGIN;
+                DROP VIEW IF EXISTS fullfile;
                 DROP VIEW IF EXISTS all_data;
                 DROP VIEW  IF EXISTS files_data;
                 DROP VIEW IF EXISTS good_disks;
@@ -401,11 +406,13 @@ def getCostForType(type: str) -> int:
     query = sql.SQL(
         """SELECT SUM(all_data.cost_per_byte* all_data.file_size) FROM all_data WHERE all_data.type={type_file};""").format(
         type_file=sql.Literal(type))
-    result = runQuery(query)
+
     try:
+        result = runQuery(query)
+        if(result[1].rows[0][0] == None):return 0
         return int(result[1].rows[0][0])
     except Exception:
-        return 0
+        return -1
 
 
 def getFilesCanBeAddedToDisk(diskID: int) -> List[int]:
@@ -414,18 +421,26 @@ def getFilesCanBeAddedToDisk(diskID: int) -> List[int]:
             WHERE file_size <= (SELECT space FROM Disk WHERE disk_id={diskId}) 
            ORDER BY file_id DESC LIMIT 5""").format(
         diskId=sql.Literal(diskID))
-    result = runQuery(query)
-    return [tup[0] for tup in result[1].rows]
+
+    try:
+        result = runQuery(query)
+        return [tup[0] for tup in result[1].rows]
+    except Exception:
+        return []
+
 
 
 def getFilesCanBeAddedToDiskAndRAM(diskID: int) -> List[int]:
     query = sql.SQL(
         """SELECT file_id FROM File WHERE file_size<=(SELECT space FROM DISK WHERE disk_id={diskId}) AND
-         file_size<=(SELECT SUM(ram_size) FROM Ram WHERE ram_id IN (SELECT ram_id FROM RamsOnDisks WHERE disk_id={diskId})) 
+         file_size<=(SELECT COALESCE (SUM(ram_size), 0) FROM Ram WHERE ram_id IN (SELECT ram_id FROM RamsOnDisks WHERE disk_id={diskId})) 
          ORDER BY file_id ASC LIMIT 5""").format(
         diskId=sql.Literal(diskID))
-    result = runQuery(query)
-    return [tup[0] for tup in result[1].rows]
+    try:
+        result = runQuery(query)
+        return [tup[0] for tup in result[1].rows]
+    except Exception:
+        return []
 
 
 def isCompanyExclusive(diskID: int) -> bool:
@@ -447,8 +462,12 @@ def getConflictingDisks() -> List[int]:
         """SELECT DISTINCT F1.disk_id FROM FilesOnDisks F1, FilesOnDisks F2 
         WHERE F1.disk_id != F2.disk_id AND F1.file_id = F2.file_id ORDER BY F1.disk_id ASC
         """)
-    result = runQuery(query)
-    return [tup[0] for tup in result[1].rows]
+
+    try :
+        result = runQuery(query)
+        return [tup[0] for tup in result[1].rows]
+    except:
+        return []
 
 
 def mostAvailableDisks() -> List[int]:
@@ -456,18 +475,35 @@ def mostAvailableDisks() -> List[int]:
         """SELECT disk_id FROM good_disks
 		ORDER BY count_file DESC, speed DESC,disk_id ASC
         LIMIT 5;""")
-    result = runQuery(query)[1].rows
-    return [tup[0] for tup in result]
-
-
-def getCloseFiles(fileID: int) -> List[int]:
-    query = sql.SQL(
-        """""").format(id=sql.Literal(fileID))
     try:
         result = runQuery(query)[1].rows
         return [tup[0] for tup in result]
     except Exception:
         return []
+
+def getCloseFiles(fileID: int) -> List[int]:
+    query = sql.SQL(
+        """
+        
+  (SELECT DISTINCT D2.file_id as file_id FROM FilesOnDisks D1,FilesOnDisks D2 
+    WHERE (D1.disk_id=D2.disk_id AND D1.file_id={fileId} AND D2.file_id!={fileId}) OR 0=(SELECT COUNT(file_id) FROM FilesOnDisks WHERE file_id={fileId})
+    GROUP BY D2.file_id HAVING (COUNT(D2.disk_id))>=(0.5*(SELECT COUNT(disk_id) FROM FilesOnDisks WHERE file_id={fileId}) 
+))
+UNION(
+	(select x1.fid  from fullfile x1,fullfile x2 where x1.fid != {fileId} And x1.fod_id = 0 And x2.fid = {fileId} and x2.fod_id = 0 ))
+	INTERSECT 
+	 (SELECT file_id FROM File WHERE file_id IN 
+	 (SELECT F1.file_id FROM File F1,File F2 WHERE F1.file_id!={fileId} AND F2.file_id={fileId})) 	    
+ORDER BY file_id
+         LIMIT 10""").format(
+        fileId=sql.Literal(fileID))
+    try:
+        result = runQuery(query)[1].rows
+        return [tup[0] for tup in result]
+
+    except Exception:
+        return []
+
 
 
 ####### test create table #######
