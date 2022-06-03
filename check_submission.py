@@ -1,7 +1,7 @@
 import zipfile
 import sys
 
-# zip format must be ID1-ID2.zip contains ID1_ID2.txt, ID1_ID2.pdf, Solution.py
+# zip format must be ID1-ID2.zip contains ID1_ID2.txt, ID1_ID2.pdf, Solution_1.py
 if __name__ == '__main__':
     if len(sys.argv) != 2:
         print('Please enter the zip file from this directory')
@@ -21,8 +21,8 @@ if __name__ == '__main__':
         if len(list_Of_files) != 3:
             print('There must be 3 files in zip')
             exit(1)
-        if "Solution.py" not in list_Of_files:
-            print('Solution.py is missing')
+        if "Solution_1.py" not in list_Of_files:
+            print('Solution_1.py is missing')
             exit(1)
         if id1 + "_" + id2 + ".pdf" not in list_Of_files:
             print(id1 + "_" + id2 + ".pdf" + ' is missing')
