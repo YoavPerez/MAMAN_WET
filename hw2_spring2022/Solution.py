@@ -114,14 +114,14 @@ def createTables():
     '''
 
     query = """BEGIN;
-    CREATE TABLE File
+    CREATE TABLE IF NOT EXISTS File
     (file_id INTEGER PRIMARY KEY , 
     type TEXT NOT NULL, 
     file_size INTEGER NOT NULL ,
     CHECK (file_id > 0),
     CHECK (file_size >= 0)
     );
-    CREATE TABLE Disk
+    CREATE TABLE IF NOT EXISTS Disk
     (disk_id INTEGER  PRIMARY KEY CHECK (disk_id > 0), 
     company TEXT NOT NULL, 
     speed INTEGER NOT NULL , 
@@ -132,14 +132,14 @@ def createTables():
     CHECK (cost_per_byte > 0)
     
     );
-    CREATE TABLE Ram
+    CREATE TABLE IF NOT EXISTS Ram
     (ram_id INTEGER  PRIMARY KEY , 
     ram_size INTEGER NOT NULL , 
     company TEXT NOT NULL,
     CHECK (ram_id > 0),
     CHECK (ram_size  > 0)
     );
-    CREATE TABLE FilesOnDisks
+    CREATE TABLE IF NOT EXISTS FilesOnDisks
     (file_id INTEGER, 
     disk_id INTEGER,
     PRIMARY KEY (file_id,disk_id),
@@ -150,7 +150,7 @@ def createTables():
      REFERENCES File (file_id)
      ON DELETE CASCADE
     );
-    CREATE TABLE RamsOnDisks
+    CREATE TABLE IF NOT EXISTS RamsOnDisks
     (ram_id INTEGER , 
     disk_id INTEGER , 
     PRIMARY KEY (ram_id, disk_id), 
@@ -161,13 +161,13 @@ def createTables():
      REFERENCES Ram (ram_id)
      ON DELETE CASCADE
     );
-   CREATE VIEW good_disks AS 
+   CREATE OR REPLACE VIEW good_disks AS 
         SELECT disk_id, speed, COUNT(file_id) AS count_file FROM Disk LEFT OUTER JOIN File ON(Disk.space >= File.file_size) GROUP BY disk_id;
     
-    CREATE VIEW files_data AS SELECT FilesOndisks.file_id, FilesOnDisks.disk_id, File.type, File.file_size FROM FilesOnDisks 
+    CREATE OR REPLACE VIEW files_data AS SELECT FilesOndisks.file_id, FilesOnDisks.disk_id, File.type, File.file_size FROM FilesOnDisks 
     LEFT OUTER JOIN File ON FilesOnDisks.file_id=File.file_id;
     
-    CREATE VIEW all_data AS SELECT 
+    CREATE OR REPLACE VIEW all_data AS SELECT 
     files_data.file_id, files_data.disk_id, files_data.type, files_data.file_size, Disk.cost_per_byte 
     FROM files_data LEFT OUTER JOIN Disk ON Disk.disk_id=files_data.disk_id;
 
@@ -178,25 +178,25 @@ def createTables():
 
 def clearTables():
     query = """BEGIN;
-                    CLEAR TABLE FilesOnDisks;
-                    CLEAR TABLE RamsOnDisks;
-                    CLEAR TABLE File;
-                    CLEAR TABLE Disk;
-                    CLEAR TABLE Ram;
+                    DELETE FROM FilesOnDisks CASCADE ;
+                    DELETE FROM  RamsOnDisks CASCADE ;
+                    DELETE FROM  File CASCADE ;
+                    DELETE  FROM  Disk CASCADE ;
+                    DELETE FROM  Ram CASCADE ;
                     COMMIT;"""
     return runCheckQuery(query)
 
 
 def dropTables():
     query = """BEGIN;
-                DROP VIEW all_data;
-                DROP VIEW files_data;
-                DROP VIEW good_disks;
-                DROP TABLE FilesOnDisks;
-                DROP TABLE RamsOnDisks;
-                DROP TABLE File;
-                DROP TABLE Disk;
-                DROP TABLE Ram;
+                DROP VIEW IF EXISTS all_data;
+                DROP VIEW  IF EXISTS files_data;
+                DROP VIEW IF EXISTS good_disks;
+                DROP TABLE IF EXISTS FilesOnDisks;
+                DROP TABLE IF EXISTS RamsOnDisks;
+                DROP TABLE IF EXISTS File;
+                DROP TABLE IF EXISTS Disk;
+                DROP TABLE IF EXISTS Ram;
                 COMMIT;"""
     return runCheckQuery(query)
 
@@ -278,7 +278,14 @@ def getDiskByID(diskID: int) -> Disk:
 
 def deleteDisk(diskID: int) -> Status:
     query = sql.SQL("""DELETE FROM Disk WHERE disk_id={diskId}""").format(diskId=sql.Literal(diskID))
-    return runCheckQuery(query)
+    try:
+        result = runQuery(query)
+        if result[0] == 0:
+            return Status.NOT_EXISTS
+        return Status.OK
+    except Exception:
+        return Status.ERROR
+
 
 
 def addRAM(ram: RAM) -> Status:
@@ -301,7 +308,14 @@ def getRAMByID(ramID: int) -> RAM:
 
 def deleteRAM(ramID: int) -> Status:
     query = sql.SQL("""DELETE FROM Ram WHERE ram_id={ramId}""").format(ramId=sql.Literal(ramID))
-    return runCheckQuery(query)
+
+    try:
+        result = runQuery(query)
+        if result[0] == 0:
+            return Status.NOT_EXISTS
+        return Status.OK
+    except Exception:
+        return Status.ERROR
 
 
 def addDiskAndFile(disk: Disk, file: File) -> Status:
@@ -326,13 +340,13 @@ def addFileToDisk(file: File, diskID: int) -> Status:
 
 def removeFileFromDisk(file: File, diskID: int) -> Status:
     query = sql.SQL("""
-    UPDATE Disk SET space=space+{file_size} WHERE disk_id IN (SELECT disk_id FROM FilesOnDisks WHERE file_id={fileId});
+    UPDATE Disk SET space=space+{file_size} WHERE disk_id IN (SELECT disk_id FROM FilesOnDisks WHERE file_id={fileId} AND disk_id ={diskId});
     DELETE FROM FilesOnDisks WHERE disk_id = {diskId} AND file_id = {fileId};
      
         """).format(diskId=sql.Literal(diskID),
-                                                                                   fileId=sql.Literal(file.getFileID()),
-                                                                                   file_size=sql.Literal(
-                                                                                       file.getSize()))
+               fileId=sql.Literal(file.getFileID()),
+               file_size=sql.Literal(
+                   file.getSize()))
     return runCheckQuery(query);
 
 
@@ -448,14 +462,12 @@ def mostAvailableDisks() -> List[int]:
 
 def getCloseFiles(fileID: int) -> List[int]:
     query = sql.SQL(
-        """SELECT DISTINCT D2.file_id FROM FilesOnDisks D1,FilesOnDisks D2 
-        WHERE (D1.disk_id=D2.disk_id AND D1.file_id={fileId} AND D2.file_id!={fileId}) OR 0=(SELECT COUNT(file_id) FROM FilesOnDisks WHERE file_id={fileId})
-         GROUP BY D2.file_id HAVING (COUNT(D2.disk_id))>=(0.5*(SELECT COUNT(disk_id) FROM FilesOnDisks WHERE file_id={fileId})) 
-		 ORDER BY D2.file_id
-         LIMIT 10""").format(
-        fileId=sql.Literal(fileID))
-    result = runQuery(query)[1].rows
-    return [tup[0] for tup in result]
+        """""").format(id=sql.Literal(fileID))
+    try:
+        result = runQuery(query)[1].rows
+        return [tup[0] for tup in result]
+    except Exception:
+        return []
 
 
 ####### test create table #######
